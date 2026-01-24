@@ -1,0 +1,24 @@
+# Dependencies
+node_modules/
+
+# Environment files with secrets
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Package lock (optional - regenerated on install)
+# package-lock.json

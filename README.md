@@ -45,8 +45,9 @@ The goal is to speed up the tedious parts of game development so you can focus o
 ## Requirements
 
 - **Node.js** 18.0.0 or higher
-- **Unreal Engine 5** with the [UnrealClaude plugin](https://github.com/Natfii/UnrealClaude) installed and enabled
-- Unreal Editor running with the plugin's HTTP server active (default: port 3000)
+- An HTTP endpoint that implements the expected REST API (default: `http://localhost:3000`)
+
+> **Note**: This MCP server is designed to work with the [UnrealClaude plugin](https://github.com/Natfii/UnrealClaude), but can be adapted for other HTTP backends that implement the same API.
 
 ## Quick Start
 
@@ -94,11 +95,7 @@ Add to your MCP client's configuration:
 
 **Other MCP Clients**: Consult your client's documentation for MCP server configuration. The server uses stdio transport.
 
-### 3. Start Unreal Editor
-
-Launch Unreal Editor with the UnrealClaude plugin enabled. The plugin automatically starts an HTTP server on port 3000.
-
-### 4. Use It
+### 3. Use It
 
 Once connected, you can interact with Unreal Editor through natural language:
 
@@ -281,14 +278,9 @@ Enable automatic context injection by setting:
 
 ### Tools show "NOT CONNECTED"
 
-- Ensure Unreal Editor is running
-- Verify the UnrealClaude plugin is enabled
-- Check Output Log in Unreal for "MCP Server started on http://localhost:3000"
-
-### Port conflict
-
-- If port 3000 is in use, the plugin fails to start
-- Close other applications using port 3000, or modify the port in plugin settings
+- Ensure your HTTP backend is running and accessible
+- Verify the `UNREAL_MCP_URL` environment variable points to the correct endpoint
+- Check that the endpoint responds to `/mcp/status`
 
 ### stdin/stdout errors
 
@@ -324,6 +316,6 @@ MIT with Attribution - see [LICENSE](LICENSE) for details.
 
 ## Related
 
-- [UnrealClaude Plugin](https://github.com/Natfii/UnrealClaude) - The Unreal Engine plugin that this MCP server connects to
+- [UnrealClaude Plugin](https://github.com/Natfii/UnrealClaude) - Unreal Engine plugin that provides the HTTP backend for this MCP server
 - [Model Context Protocol](https://modelcontextprotocol.io/) - The protocol specification
 - [MCP GitHub](https://github.com/modelcontextprotocol) - Official MCP repositories and SDKs

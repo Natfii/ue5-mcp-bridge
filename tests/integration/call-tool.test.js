@@ -186,7 +186,7 @@ async function simulateCallTool(name, args, { injectContext = false, asyncEnable
     }
 
     let responseText = result.success
-      ? result.message + (result.data ? "\n\n" + JSON.stringify(result.data, null, 2) : "")
+      ? result.message + (result.data ? "\n\n" + JSON.stringify(result.data) : "")
       : `Error: ${result.message}`;
 
     if (injectContext && result.success) {
@@ -227,7 +227,7 @@ async function simulateCallTool(name, args, { injectContext = false, asyncEnable
   }
 
   let responseText = result.success
-    ? result.message + (result.data ? "\n\n" + JSON.stringify(result.data, null, 2) : "")
+    ? result.message + (result.data ? "\n\n" + JSON.stringify(result.data) : "")
     : `Error: ${result.message}`;
 
   if (injectContext && result.success) {
@@ -237,20 +237,10 @@ async function simulateCallTool(name, args, { injectContext = false, asyncEnable
     }
   }
 
-  const response = {
+  return {
     content: [{ type: "text", text: responseText }],
     isError: !result.success,
   };
-
-  if (result.data) {
-    response.structuredContent = {
-      success: result.success,
-      message: result.message,
-      data: result.data,
-    };
-  }
-
-  return response;
 }
 
 // ─── unreal_get_ue_context ───────────────────────────────────────────
@@ -355,15 +345,6 @@ describe("CallTool — unreal tool proxy", () => {
     const result = await simulateCallTool("unreal_blueprint_compile", { blueprint_path: "/Game/Bad" }, { asyncEnabled: false });
     expect(result.content[0].text).toContain("Error:");
     expect(result.isError).toBe(true);
-  });
-
-  it("includes structuredContent when data is present", async () => {
-    installFetchMock([
-      { pattern: "/mcp/tool/spawn_actor", body: TOOL_EXECUTE_SUCCESS },
-    ]);
-    const result = await simulateCallTool("unreal_spawn_actor", {}, { asyncEnabled: false });
-    expect(result.structuredContent).toBeDefined();
-    expect(result.structuredContent.data.actorName).toBe("BP_Enemy_42");
   });
 
   it("injects context when enabled and tool matches", async () => {
@@ -527,6 +508,11 @@ describe("CallTool — unreal_ue router", () => {
 
     const result2 = await simulateCallTool("unreal_ue", { domain: "blueprint" });
     expect(result2.isError).toBe(true);
+  });
+
+  it("handles null args gracefully", async () => {
+    const result = await simulateCallTool("unreal_ue", null);
+    expect(result.isError).toBe(true);
   });
 
   it("works with empty params object", async () => {

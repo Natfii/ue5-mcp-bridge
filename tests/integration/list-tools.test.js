@@ -295,9 +295,10 @@ describe("ListTools — router filtering", () => {
     expect(result.tools.find(t => t.name === "unreal_spawn_actor")).toBeDefined();
   });
 
-  it("excludes mega tools (blueprint_modify)", async () => {
+  it("excludes mega tools (blueprint_modify, get_actors)", async () => {
     const result = await simulateListTools();
     expect(result.tools.find(t => t.name === "unreal_blueprint_modify")).toBeUndefined();
+    expect(result.tools.find(t => t.name === "unreal_get_actors")).toBeUndefined();
   });
 
   it("excludes hidden tools (task_submit)", async () => {

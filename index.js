@@ -67,7 +67,7 @@ const checkUnrealConnection = () => _checkUnrealConnection(CONFIG.unrealMcpUrl, 
 const server = new Server(
   {
     name: "ue5-mcp-server",
-    version: "1.3.0",
+    version: "1.4.0",
   },
   {
     capabilities: {
@@ -443,7 +443,7 @@ async function main() {
   const contextStatus = testContext ? `OK (${categories.length} categories loaded)` : "FAILED";
 
   log.info("UE5 MCP Server started", {
-    version: "1.3.0",
+    version: "1.4.0",
     unrealUrl: CONFIG.unrealMcpUrl,
     timeoutMs: CONFIG.requestTimeoutMs,
     asyncEnabled: CONFIG.asyncEnabled,

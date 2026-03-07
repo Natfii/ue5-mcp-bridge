@@ -8,7 +8,7 @@ export default defineConfig({
     restoreMocks: true,
     coverage: {
       provider: "v8",
-      include: ["lib.js", "context-loader.js"],
+      include: ["lib.js", "context-loader.js", "tool-router.js"],
       exclude: ["index.js"],
       thresholds: {
         statements: 90,

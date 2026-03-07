@@ -121,12 +121,13 @@ export function convertToMCPSchema(unrealParams, compact = false) {
   const required = [];
 
   for (const param of unrealParams || []) {
-    const prop = {
-      type: param.type === "number" ? "number" :
-            param.type === "boolean" ? "boolean" :
-            param.type === "array" ? "array" :
-            param.type === "object" ? "object" : "string",
-    };
+    const prop = {};
+    if (param.type !== "any") {
+      prop.type = param.type === "number" ? "number" :
+                  param.type === "boolean" ? "boolean" :
+                  param.type === "array" ? "array" :
+                  param.type === "object" ? "object" : "string";
+    }
 
     if (param.description) {
       prop.description = compact && param.description.length > 80
@@ -263,6 +264,49 @@ export async function executeUnrealToolAsync(baseUrl, timeoutMs, toolName, args,
     success: false,
     message: `Task timed out after ${asyncTimeoutMs}ms (task_id: ${taskId})`,
   };
+}
+
+/**
+ * Format a tool result into MCP response content blocks.
+ * Detects image_base64 in capture_viewport results and returns native ImageContent.
+ *
+ * @param {string} toolName - raw Unreal tool name (no "unreal_" prefix)
+ * @param {object} result - {success, message, data} from Unreal
+ * @param {function|null} getContext - optional (toolName) => string|null for context injection
+ * @returns {{ content: Array, isError: boolean }}
+ */
+export function formatToolResponse(toolName, result, getContext) {
+  if (!result.success) {
+    return {
+      content: [{ type: "text", text: `Error: ${result.message}` }],
+      isError: true,
+    };
+  }
+
+  const content = [];
+
+  if (toolName === "capture_viewport" && result.data?.image_base64) {
+    content.push({
+      type: "image",
+      data: result.data.image_base64,
+      mimeType: `image/${result.data.format || "jpeg"}`,
+    });
+    // Include metadata without the huge base64 string
+    const meta = { ...result.data };
+    delete meta.image_base64;
+    content.push({ type: "text", text: result.message + "\n\n" + JSON.stringify(meta) });
+  } else {
+    let text = result.message + (result.data ? "\n\n" + JSON.stringify(result.data) : "");
+    if (getContext) {
+      const ctx = getContext(toolName);
+      if (ctx) {
+        text += `\n\n---\n\n## Relevant UE 5.7 API Context\n\n${ctx}`;
+      }
+    }
+    content.push({ type: "text", text });
+  }
+
+  return { content, isError: false };
 }
 
 /**

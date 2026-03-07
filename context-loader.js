@@ -217,6 +217,26 @@ const CONTEXT_CONFIG = {
       "bulk create",
     ],
   },
+  ue_core: {
+    files: ["ue-core-api.md"],
+    toolPatterns: [], // Not auto-triggered by any tool
+    keywords: [
+      "uproperty",
+      "ufunction",
+      "uclass",
+      "ustruct",
+      "uenum",
+      "include path",
+      "header",
+      "specifier",
+      "api reference",
+      "class hierarchy",
+      "base class",
+      "fvector",
+      "ftransform",
+      "core api",
+    ],
+  },
 };
 
 // Cache for loaded context files

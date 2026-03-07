@@ -51,7 +51,7 @@ describe("resolveUnrealTool", () => {
     expect(resolveUnrealTool("blueprint", "add_variable")).toBe("blueprint_modify");
     expect(resolveUnrealTool("anim", "add_state")).toBe("anim_blueprint_modify");
     expect(resolveUnrealTool("enhanced_input", "create_action")).toBe("enhanced_input");
-    expect(resolveUnrealTool("material", "set_scalar")).toBe("material");
+    expect(resolveUnrealTool("material", "create_material_instance")).toBe("material");
     expect(resolveUnrealTool("asset", "duplicate")).toBe("asset");
   });
 
@@ -107,6 +107,15 @@ describe("ROUTER_TOOL_SCHEMA", () => {
   it("is not read-only (mega-tools mutate state)", () => {
     expect(ROUTER_TOOL_SCHEMA.annotations.readOnlyHint).toBe(false);
     expect(ROUTER_TOOL_SCHEMA.annotations.destructiveHint).toBe(true);
+  });
+
+  it("description includes key param names for discoverability", () => {
+    const desc = ROUTER_TOOL_SCHEMA.description;
+    expect(desc).toContain("blueprint_path");
+    expect(desc).toContain("asset_path");
+    expect(desc).toContain("material_path");
+    expect(desc).toContain("action_name");
+    expect(desc).toContain("character_name");
   });
 });
 

@@ -209,9 +209,9 @@ describe("getContextForQuery", () => {
 // ─── listCategories ──────────────────────────────────────────────────
 
 describe("listCategories", () => {
-  it("returns all 10 category names", () => {
+  it("returns all 11 category names", () => {
     const cats = listCategories();
-    expect(cats).toHaveLength(10);
+    expect(cats).toHaveLength(11);
     expect(cats).toContain("animation");
     expect(cats).toContain("blueprint");
     expect(cats).toContain("slate");
@@ -222,6 +222,7 @@ describe("listCategories", () => {
     expect(cats).toContain("character");
     expect(cats).toContain("material");
     expect(cats).toContain("parallel_workflows");
+    expect(cats).toContain("ue_core");
   });
 });
 

@@ -11,6 +11,7 @@ import {
   executeUnrealToolAsync,
   checkUnrealConnection,
   fetchUnrealTools,
+  formatToolResponse,
 } from "../../lib.js";
 import { resolveUnrealTool } from "../../tool-router.js";
 import {
@@ -38,6 +39,8 @@ vi.mock("fs", () => ({
       "enhanced_input.md": "# Enhanced Input Context",
       "character.md": "# Character Context",
       "material.md": "# Material Context",
+      "parallel_workflows.md": "# Parallel Workflows Context",
+      "ue-core-api.md": "# UE Core API Context",
     };
     if (stubs[filename]) return stubs[filename];
     throw new Error(`ENOENT: ${filepath}`);
@@ -185,21 +188,7 @@ async function simulateCallTool(name, args, { injectContext = false, asyncEnable
       result = await executeUnrealTool(BASE_URL, TIMEOUT_MS, targetTool, unrealArgs);
     }
 
-    let responseText = result.success
-      ? result.message + (result.data ? "\n\n" + JSON.stringify(result.data) : "")
-      : `Error: ${result.message}`;
-
-    if (injectContext && result.success) {
-      const context = getContextForTool(targetTool);
-      if (context) {
-        responseText += `\n\n---\n\n## Relevant UE 5.7 API Context\n\n${context}`;
-      }
-    }
-
-    return {
-      content: [{ type: "text", text: responseText }],
-      isError: !result.success,
-    };
+    return formatToolResponse(targetTool, result, injectContext ? getContextForTool : null);
   }
 
   // Unknown tool
@@ -226,21 +215,7 @@ async function simulateCallTool(name, args, { injectContext = false, asyncEnable
     result = await executeUnrealTool(BASE_URL, TIMEOUT_MS, toolName, args);
   }
 
-  let responseText = result.success
-    ? result.message + (result.data ? "\n\n" + JSON.stringify(result.data) : "")
-    : `Error: ${result.message}`;
-
-  if (injectContext && result.success) {
-    const context = getContextForTool(toolName);
-    if (context) {
-      responseText += `\n\n---\n\n## Relevant UE 5.7 API Context\n\n${context}`;
-    }
-  }
-
-  return {
-    content: [{ type: "text", text: responseText }],
-    isError: !result.success,
-  };
+  return formatToolResponse(toolName, result, injectContext ? getContextForTool : null);
 }
 
 // ─── unreal_get_ue_context ───────────────────────────────────────────
@@ -568,5 +543,83 @@ describe("CallTool — unknown tool", () => {
     const result = await simulateCallTool("some_random_tool", {});
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toContain("some_random_tool");
+  });
+});
+
+// ─── formatToolResponse (image content) ─────────────────────────────
+
+describe("formatToolResponse", () => {
+  it("returns MCP image content block for capture_viewport with image_base64", () => {
+    const result = {
+      success: true,
+      message: "Viewport captured",
+      data: {
+        image_base64: "iVBORw0KGgoAAAANS...",
+        format: "jpeg",
+        width: 1920,
+        height: 1080,
+      },
+    };
+    const response = formatToolResponse("capture_viewport", result, null);
+    expect(response.isError).toBe(false);
+    expect(response.content).toHaveLength(2);
+    expect(response.content[0].type).toBe("image");
+    expect(response.content[0].data).toBe("iVBORw0KGgoAAAANS...");
+    expect(response.content[0].mimeType).toBe("image/jpeg");
+    // Text block should have metadata but NOT the base64 string
+    expect(response.content[1].type).toBe("text");
+    expect(response.content[1].text).toContain("1920");
+    expect(response.content[1].text).not.toContain("iVBORw0KGgoAAAANS...");
+  });
+
+  it("defaults to image/jpeg when format is missing", () => {
+    const result = {
+      success: true,
+      message: "Captured",
+      data: { image_base64: "abc123" },
+    };
+    const response = formatToolResponse("capture_viewport", result, null);
+    expect(response.content[0].mimeType).toBe("image/jpeg");
+  });
+
+  it("returns text content for non-capture_viewport tools", () => {
+    const result = {
+      success: true,
+      message: "Actor spawned",
+      data: { actorName: "BP_Enemy_1" },
+    };
+    const response = formatToolResponse("spawn_actor", result, null);
+    expect(response.isError).toBe(false);
+    expect(response.content).toHaveLength(1);
+    expect(response.content[0].type).toBe("text");
+    expect(response.content[0].text).toContain("Actor spawned");
+  });
+
+  it("returns error content for failed results", () => {
+    const result = { success: false, message: "Actor not found" };
+    const response = formatToolResponse("set_property", result, null);
+    expect(response.isError).toBe(true);
+    expect(response.content[0].text).toContain("Error: Actor not found");
+  });
+
+  it("injects context when getContext function is provided", () => {
+    const result = { success: true, message: "Compiled" };
+    const mockGetContext = (name) => name === "blueprint_modify" ? "# BP Context" : null;
+    const response = formatToolResponse("blueprint_modify", result, mockGetContext);
+    expect(response.content[0].text).toContain("# BP Context");
+  });
+
+  it("does not inject context for capture_viewport (image path)", () => {
+    const result = {
+      success: true,
+      message: "Captured",
+      data: { image_base64: "abc", format: "png" },
+    };
+    const mockGetContext = () => "# Some Context";
+    const response = formatToolResponse("capture_viewport", result, mockGetContext);
+    // Image path should not have context injected
+    expect(response.content[0].type).toBe("image");
+    expect(response.content[1].type).toBe("text");
+    expect(response.content[1].text).not.toContain("Some Context");
   });
 });

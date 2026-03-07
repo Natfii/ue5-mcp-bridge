@@ -74,6 +74,22 @@ describe("convertToMCPSchema", () => {
     expect(schema.properties.foo.type).toBe("string");
   });
 
+  it("omits type field entirely for 'any' type", () => {
+    const schema = convertToMCPSchema([
+      { name: "value", type: "any", description: "Any value" },
+    ]);
+    expect(schema.properties.value).not.toHaveProperty("type");
+    expect(schema.properties.value.description).toBe("Any value");
+  });
+
+  it("'any' type with required still appears in required array", () => {
+    const schema = convertToMCPSchema([
+      { name: "value", type: "any", description: "Any value", required: true },
+    ]);
+    expect(schema.properties.value).not.toHaveProperty("type");
+    expect(schema.required).toContain("value");
+  });
+
   it("includes default value when provided", () => {
     const schema = convertToMCPSchema([
       { name: "x", type: "number", description: "X", default: 42 },

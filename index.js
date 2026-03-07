@@ -38,6 +38,7 @@ import {
   checkUnrealConnection as _checkUnrealConnection,
   convertToMCPSchema,
   convertAnnotations,
+  formatToolResponse as _formatToolResponse,
 } from "./lib.js";
 
 // Tool router for mega-tool collapsing
@@ -62,6 +63,8 @@ const CONFIG = {
 const fetchUnrealTools = () => _fetchUnrealTools(CONFIG.unrealMcpUrl, CONFIG.requestTimeoutMs);
 const executeUnrealTool = (toolName, args) => _executeUnrealTool(CONFIG.unrealMcpUrl, CONFIG.requestTimeoutMs, toolName, args);
 const checkUnrealConnection = () => _checkUnrealConnection(CONFIG.unrealMcpUrl, CONFIG.requestTimeoutMs);
+const formatToolResponse = (toolName, result) =>
+  _formatToolResponse(toolName, result, CONFIG.injectContext ? getContextForTool : null);
 
 // Create the MCP server
 const server = new Server(
@@ -346,21 +349,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       result = await executeUnrealTool(targetTool, unrealArgs);
     }
 
-    let responseText = result.success
-      ? result.message + (result.data ? "\n\n" + JSON.stringify(result.data) : "")
-      : `Error: ${result.message}`;
-
-    if (CONFIG.injectContext && result.success) {
-      const context = getContextForTool(targetTool);
-      if (context) {
-        responseText += `\n\n---\n\n## Relevant UE 5.7 API Context\n\n${context}`;
-      }
-    }
-
-    return {
-      content: [{ type: "text", text: responseText }],
-      isError: !result.success,
-    };
+    return formatToolResponse(targetTool, result);
   }
 
   // Strip "unreal_" prefix to get actual tool name
@@ -410,27 +399,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     result = await executeUnrealTool(toolName, args);
   }
 
-  let responseText = result.success
-    ? result.message + (result.data ? "\n\n" + JSON.stringify(result.data) : "")
-    : `Error: ${result.message}`;
-
+  const response = formatToolResponse(toolName, result);
   if (CONFIG.injectContext && result.success) {
-    const context = getContextForTool(toolName);
-    if (context) {
-      responseText += `\n\n---\n\n## Relevant UE 5.7 API Context\n\n${context}`;
-      log.debug("Injected context for tool", { tool: toolName });
-    }
+    log.debug("Injected context for tool", { tool: toolName });
   }
-
-  return {
-    content: [
-      {
-        type: "text",
-        text: responseText,
-      },
-    ],
-    isError: !result.success,
-  };
+  return response;
 });
 
 // Start the server

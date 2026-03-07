@@ -13,6 +13,7 @@ import {
   convertToMCPSchema,
   convertAnnotations,
 } from "../../lib.js";
+import { classifyTool, ROUTER_TOOL_SCHEMA } from "../../tool-router.js";
 import {
   installFetchMock,
   installFetchReject,
@@ -70,14 +71,10 @@ async function simulateListTools({ toolCacheTtlMs = DEFAULT_TTL_MS } = {}) {
     toolCache = { tools: unrealTools, timestamp: Date.now() };
   }
 
-  const mcpTools = unrealTools.map((tool) => ({
-    name: `unreal_${tool.name}`,
-    description: tool.description,
-    inputSchema: convertToMCPSchema(tool.parameters, true),
-    annotations: convertAnnotations(tool.annotations),
-  }));
+  const mcpTools = [];
 
-  mcpTools.unshift({
+  // 1. Status first
+  mcpTools.push({
     name: "unreal_status",
     description: `Check Unreal Editor connection status. Currently: CONNECTED to ${status.projectName || "Unknown Project"} (${status.engineVersion || "Unknown"})`,
     inputSchema: { type: "object", properties: {} },
@@ -89,6 +86,22 @@ async function simulateListTools({ toolCacheTtlMs = DEFAULT_TTL_MS } = {}) {
     },
   });
 
+  // 2. Simple tools only
+  for (const tool of unrealTools) {
+    if (classifyTool(tool.name) === "simple") {
+      mcpTools.push({
+        name: `unreal_${tool.name}`,
+        description: tool.description,
+        inputSchema: convertToMCPSchema(tool.parameters, true),
+        annotations: convertAnnotations(tool.annotations),
+      });
+    }
+  }
+
+  // 3. Router tool
+  mcpTools.push(ROUTER_TOOL_SCHEMA);
+
+  // 4. Context tool last
   mcpTools.push({
     name: "unreal_get_ue_context",
     description: `Get Unreal Engine 5.7 API context/documentation. Categories: ${listCategories().join(", ")}.`,
@@ -156,10 +169,12 @@ describe("ListTools — connected", () => {
     expect(last.name).toBe("unreal_get_ue_context");
   });
 
-  it("total count = Unreal tools + 2 (status + context)", async () => {
+  it("total count = simple tools + 3 (status + router + context)", async () => {
     const result = await simulateListTools();
-    const unrealToolCount = UNREAL_TOOLS_RESPONSE.tools.length;
-    expect(result.tools).toHaveLength(unrealToolCount + 2);
+    const simpleCount = UNREAL_TOOLS_RESPONSE.tools.filter(
+      t => classifyTool(t.name) === "simple"
+    ).length;
+    expect(result.tools).toHaveLength(simpleCount + 3);
   });
 
   it("converts tool parameters to MCP inputSchema", async () => {
@@ -172,24 +187,25 @@ describe("ListTools — connected", () => {
 
   it("converts tool annotations", async () => {
     const result = await simulateListTools();
-    const getActors = result.tools.find((t) => t.name === "unreal_get_actors");
-    expect(getActors.annotations.readOnlyHint).toBe(true);
-    expect(getActors.annotations.destructiveHint).toBe(false);
+    const statusTool = result.tools.find((t) => t.name === "unreal_status");
+    expect(statusTool.annotations.readOnlyHint).toBe(true);
+    expect(statusTool.annotations.destructiveHint).toBe(false);
   });
 });
 
 // ─── Empty tools ─────────────────────────────────────────────────────
 
 describe("ListTools — empty tool list from Unreal", () => {
-  it("returns just status + context tools when Unreal has no tools", async () => {
+  it("returns status + router + context tools when Unreal has no tools", async () => {
     installFetchMock([
       { pattern: "/mcp/status", body: UNREAL_STATUS_RESPONSE },
       { pattern: "/mcp/tools", body: { tools: [] } },
     ]);
     const result = await simulateListTools();
-    expect(result.tools).toHaveLength(2);
+    expect(result.tools).toHaveLength(3);
     expect(result.tools[0].name).toBe("unreal_status");
-    expect(result.tools[1].name).toBe("unreal_get_ue_context");
+    expect(result.tools[1].name).toBe("unreal_ue");
+    expect(result.tools[2].name).toBe("unreal_get_ue_context");
   });
 });
 
@@ -253,5 +269,40 @@ describe("ListTools — TTL cache", () => {
     const result1 = await simulateListTools();
     const result2 = await simulateListTools();
     expect(result1.tools).toHaveLength(result2.tools.length);
+  });
+});
+
+// ─── Router filtering ───────────────────────────────────────────────
+
+describe("ListTools — router filtering", () => {
+  beforeEach(() => {
+    installFetchMock([
+      { pattern: "/mcp/status", body: UNREAL_STATUS_RESPONSE },
+      { pattern: "/mcp/tools", body: UNREAL_TOOLS_RESPONSE },
+    ]);
+  });
+
+  it("includes unreal_ue router tool", async () => {
+    const result = await simulateListTools();
+    const router = result.tools.find(t => t.name === "unreal_ue");
+    expect(router).toBeDefined();
+    expect(router.inputSchema.required).toContain("domain");
+    expect(router.inputSchema.required).toContain("operation");
+  });
+
+  it("includes simple tools (spawn_actor)", async () => {
+    const result = await simulateListTools();
+    expect(result.tools.find(t => t.name === "unreal_spawn_actor")).toBeDefined();
+  });
+
+  it("excludes mega tools (blueprint_modify)", async () => {
+    const result = await simulateListTools();
+    expect(result.tools.find(t => t.name === "unreal_blueprint_modify")).toBeUndefined();
+  });
+
+  it("excludes hidden tools (task_submit)", async () => {
+    const result = await simulateListTools();
+    expect(result.tools.find(t => t.name === "unreal_task_submit")).toBeUndefined();
+    expect(result.tools.find(t => t.name === "unreal_execute_script")).toBeUndefined();
   });
 });

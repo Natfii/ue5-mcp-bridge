@@ -40,6 +40,13 @@ import {
   convertAnnotations,
 } from "./lib.js";
 
+// Tool router for mega-tool collapsing
+import {
+  classifyTool,
+  resolveUnrealTool,
+  ROUTER_TOOL_SCHEMA,
+} from "./tool-router.js";
+
 // Configuration with defaults
 const CONFIG = {
   unrealMcpUrl: process.env.UNREAL_MCP_URL || "http://localhost:3000",
@@ -102,20 +109,13 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
     toolCache = { tools: unrealTools, timestamp: Date.now() };
   }
 
-  const mcpTools = unrealTools.map((tool) => ({
-    name: `unreal_${tool.name}`,
-    description: tool.description,
-    inputSchema: convertToMCPSchema(tool.parameters, true),
-    annotations: convertAnnotations(tool.annotations),
-  }));
+  const mcpTools = [];
 
-  mcpTools.unshift({
+  // 1. Status first
+  mcpTools.push({
     name: "unreal_status",
     description: `Check Unreal Editor connection status. Currently: CONNECTED to ${status.projectName || "Unknown Project"} (${status.engineVersion || "Unknown"})`,
-    inputSchema: {
-      type: "object",
-      properties: {},
-    },
+    inputSchema: { type: "object", properties: {} },
     annotations: {
       readOnlyHint: true,
       destructiveHint: false,
@@ -124,6 +124,22 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
     },
   });
 
+  // 2. Simple tools only (mega and hidden filtered out)
+  for (const tool of toolCache.tools) {
+    if (classifyTool(tool.name) === "simple") {
+      mcpTools.push({
+        name: `unreal_${tool.name}`,
+        description: tool.description,
+        inputSchema: convertToMCPSchema(tool.parameters, true),
+        annotations: convertAnnotations(tool.annotations),
+      });
+    }
+  }
+
+  // 3. Router tool (static schema for all mega-tools)
+  mcpTools.push(ROUTER_TOOL_SCHEMA);
+
+  // 4. Context tool last
   mcpTools.push({
     name: "unreal_get_ue_context",
     description: `Get UE 5.7 API context. Categories: ${listCategories().join(", ")}`,
@@ -148,7 +164,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
     },
   });
 
-  log.info("Tools listed", { count: mcpTools.length, connected: true });
+  log.info("Tools listed", { exposed: mcpTools.length, cached: toolCache.tools.length, connected: true });
   return { tools: mcpTools };
 });
 

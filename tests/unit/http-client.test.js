@@ -79,7 +79,7 @@ describe("fetchUnrealTools", () => {
       { pattern: "/mcp/tools", body: UNREAL_TOOLS_RESPONSE },
     ]);
     const tools = await fetchUnrealTools(BASE_URL, TIMEOUT_MS);
-    expect(tools).toHaveLength(3);
+    expect(tools).toHaveLength(UNREAL_TOOLS_RESPONSE.tools.length);
     expect(tools[0].name).toBe("spawn_actor");
   });
 

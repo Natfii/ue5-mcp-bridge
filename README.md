@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/natfii-ue5-mcp-bridge-badge.png)](https://mseep.ai/app/natfii-ue5-mcp-bridge)
+
 # UE5 MCP Server
 
 [![Tests](https://img.shields.io/badge/tests-87%20passed-brightgreen)](tests/) [![Coverage](https://img.shields.io/badge/coverage-97%25-brightgreen)](vitest.config.js) [![Node](https://img.shields.io/badge/node-%3E%3D18-blue)](package.json) [![License: MIT](https://img.shields.io/badge/license-MIT-yellow)](LICENSE)

@@ -271,14 +271,18 @@ export async function executeUnrealToolAsync(baseUrl, timeoutMs, toolName, args,
  * Detects image_base64 in capture_viewport results and returns native ImageContent.
  *
  * @param {string} toolName - raw Unreal tool name (no "unreal_" prefix)
- * @param {object} result - {success, message, data} from Unreal
+ * @param {object} result - {success, message, data, isError?} from Unreal.
+ *                          `isError` (MCP spec 2025-06-18) is preferred when present;
+ *                          otherwise `!success` is used for backward compatibility.
  * @param {function|null} getContext - optional (toolName) => string|null for context injection
  * @returns {{ content: Array, isError: boolean }}
  */
 export function formatToolResponse(toolName, result, getContext) {
-  if (!result.success) {
+  const isErr =
+    typeof result.isError === "boolean" ? result.isError : !result.success;
+  if (isErr) {
     return {
-      content: [{ type: "text", text: `Error: ${result.message}` }],
+      content: [{ type: "text", text: `Error: ${result.message || "Unknown error"}` }],
       isError: true,
     };
   }

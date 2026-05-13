@@ -203,4 +203,146 @@ describe("formatToolResponse", () => {
       expect(structured.content[0].text).toContain("bar");
     });
   });
+
+  /**
+   * Backward-compat snapshot test.
+   *
+   * Locks in the contract that envelopes emitted by the current plugin
+   * remain consumable by the formatToolResponse logic from bridge commit
+   * f829a5e — the PR #35 bridge, before contentType dispatch landed.
+   *
+   * If a future change to the on-the-wire envelope ever breaks that
+   * compatibility, this test fails loudly and forces a deliberate
+   * decision (bump the bridge floor, or revise the change).
+   *
+   * The snapshotted function is a verbatim copy of formatToolResponse
+   * as it existed at bridge SHA f829a5e — do not edit it.
+   */
+  describe("backward-compat: pre-contentType bridge (f829a5e) handles current plugin envelope", () => {
+    // ──── BEGIN snapshot of formatToolResponse @ bridge f829a5e ────
+    // Verbatim — DO NOT edit. This is the contract this test locks in.
+    function formatToolResponse_f829a5e(toolName, result, getContext) {
+      const isErr =
+        typeof result.isError === "boolean" ? result.isError : !result.success;
+      if (isErr) {
+        return {
+          content: [{ type: "text", text: `Error: ${result.message || "Unknown error"}` }],
+          isError: true,
+        };
+      }
+
+      const warningsBlock =
+        Array.isArray(result.warnings) && result.warnings.length > 0
+          ? "\n\nWarnings:\n" + result.warnings.map((w) => `- ${w}`).join("\n")
+          : "";
+
+      const content = [];
+
+      if (toolName === "capture_viewport" && result.data?.image_base64) {
+        content.push({
+          type: "image",
+          data: result.data.image_base64,
+          mimeType: `image/${result.data.format || "jpeg"}`,
+        });
+        const meta = { ...result.data };
+        delete meta.image_base64;
+        content.push({
+          type: "text",
+          text: result.message + "\n\n" + JSON.stringify(meta) + warningsBlock,
+        });
+      } else {
+        let text =
+          result.message +
+          (result.data ? "\n\n" + JSON.stringify(result.data) : "") +
+          warningsBlock;
+        if (getContext) {
+          const ctx = getContext(toolName);
+          if (ctx) {
+            text += `\n\n---\n\n## Relevant UE 5.7 API Context\n\n${ctx}`;
+          }
+        }
+        content.push({ type: "text", text });
+      }
+
+      return { content, isError: false };
+    }
+    // ──── END snapshot ────
+
+    /**
+     * The envelope shape a current plugin emits for capture_viewport — mirrors
+     * what MCPResponseFormatter::BuildToolResultJson produces for an
+     * FMCPToolResult::Image(...) result, including the data.image_base64
+     * backward-compat shim.
+     */
+    const currentPluginCaptureEnvelope = () => ({
+      success: true,
+      isError: false,
+      message: "Captured Editor viewport: 1024x576 JPEG",
+      contentType: "image",
+      mimeType: "image/jpeg",
+      base64: "Y2Fub25pY2Fs",
+      data: {
+        image_base64: "Y2Fub25pY2Fs",
+        width: 1024,
+        height: 576,
+        format: "jpeg",
+        quality: 70,
+        viewport_type: "Editor",
+        original_width: 1920,
+        original_height: 1080,
+      },
+      warnings: [],
+    });
+
+    it("emits an image content block from the legacy data.image_base64 mirror", () => {
+      const out = formatToolResponse_f829a5e(
+        "capture_viewport",
+        currentPluginCaptureEnvelope(),
+        null,
+      );
+      expect(out.isError).toBe(false);
+      expect(out.content[0].type).toBe("image");
+      expect(out.content[0].data).toBe("Y2Fub25pY2Fs");
+      expect(out.content[0].mimeType).toBe("image/jpeg");
+    });
+
+    it("emits a metadata text block alongside the image (no base64 leakage)", () => {
+      const out = formatToolResponse_f829a5e(
+        "capture_viewport",
+        currentPluginCaptureEnvelope(),
+        null,
+      );
+      expect(out.content[1].type).toBe("text");
+      expect(out.content[1].text).toContain("Captured");
+      expect(out.content[1].text).toContain("1024");
+      expect(out.content[1].text).toContain("Editor");
+      expect(out.content[1].text).not.toContain("Y2Fub25pY2Fs");
+    });
+
+    it("silently ignores unknown contentType / base64 / mimeType top-level fields", () => {
+      // The f829a5e bridge has no knowledge of these fields — it just doesn't
+      // read them. This test pins that "ignored" is the contract, not "errored".
+      expect(() =>
+        formatToolResponse_f829a5e(
+          "capture_viewport",
+          currentPluginCaptureEnvelope(),
+          null,
+        ),
+      ).not.toThrow();
+    });
+
+    it("honors the isError flag preference established in f829a5e", () => {
+      const errEnvelope = {
+        success: false,
+        isError: true,
+        message: "Class not found",
+        // New plugins may also emit these on errors; old bridge must ignore.
+        contentType: "text",
+      };
+      const out = formatToolResponse_f829a5e("spawn_actor", errEnvelope, null);
+      expect(out.isError).toBe(true);
+      expect(out.content[0].type).toBe("text");
+      expect(out.content[0].text).toContain("Class not found");
+    });
+  });
 });

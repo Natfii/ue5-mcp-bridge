@@ -268,12 +268,19 @@ export async function executeUnrealToolAsync(baseUrl, timeoutMs, toolName, args,
 
 /**
  * Format a tool result into MCP response content blocks.
- * Detects image_base64 in capture_viewport results and returns native ImageContent.
+ *
+ * Dispatches on the canonical `result.contentType` field emitted by newer
+ * plugin versions (MCP spec 2025-06-18 content-block taxonomy). Falls back
+ * to the legacy `toolName === "capture_viewport" && data.image_base64`
+ * detection for older plugins that don't set `contentType`.
  *
  * @param {string} toolName - raw Unreal tool name (no "unreal_" prefix)
- * @param {object} result - {success, message, data, isError?} from Unreal.
- *                          `isError` (MCP spec 2025-06-18) is preferred when present;
- *                          otherwise `!success` is used for backward compatibility.
+ * @param {object} result - response envelope from Unreal. New plugins emit
+ *                          `{success, isError, message, data, contentType,
+ *                          mimeType?, base64?, warnings?}`. Older plugins
+ *                          omit contentType/mimeType/base64; for those,
+ *                          image dispatch falls back to toolName matching.
+ *                          `isError` is preferred over `!success` when present.
  * @param {function|null} getContext - optional (toolName) => string|null for context injection
  * @returns {{ content: Array, isError: boolean }}
  */
@@ -294,18 +301,38 @@ export function formatToolResponse(toolName, result, getContext) {
 
   const content = [];
 
-  if (toolName === "capture_viewport" && result.data?.image_base64) {
-    content.push({
-      type: "image",
-      data: result.data.image_base64,
-      mimeType: `image/${result.data.format || "jpeg"}`,
-    });
-    // Include metadata without the huge base64 string
-    const meta = { ...result.data };
+  // Image dispatch: canonical contentType=image with top-level base64/mimeType
+  // (new plugin format) wins; legacy toolName + data.image_base64 is the fallback
+  // path for older plugin versions.
+  const isImageNew =
+    result.contentType === "image" &&
+    typeof result.base64 === "string" &&
+    result.base64.length > 0;
+  const isImageLegacy =
+    !isImageNew && toolName === "capture_viewport" && !!result.data?.image_base64;
+
+  if (isImageNew || isImageLegacy) {
+    const base64 = isImageNew ? result.base64 : result.data.image_base64;
+    const mimeType = isImageNew
+      ? result.mimeType || "image/jpeg"
+      : `image/${result.data.format || "jpeg"}`;
+    content.push({ type: "image", data: base64, mimeType });
+
+    // Metadata block — same data object minus the base64 payload to avoid
+    // re-emitting the huge string in the text channel.
+    const meta = result.data ? { ...result.data } : {};
     delete meta.image_base64;
-    content.push({ type: "text", text: result.message + "\n\n" + JSON.stringify(meta) + warningsBlock });
+    const metaText =
+      Object.keys(meta).length > 0 ? "\n\n" + JSON.stringify(meta) : "";
+    content.push({
+      type: "text",
+      text: (result.message || "") + metaText + warningsBlock,
+    });
   } else {
-    let text = result.message + (result.data ? "\n\n" + JSON.stringify(result.data) : "") + warningsBlock;
+    let text =
+      (result.message || "") +
+      (result.data ? "\n\n" + JSON.stringify(result.data) : "") +
+      warningsBlock;
     if (getContext) {
       const ctx = getContext(toolName);
       if (ctx) {

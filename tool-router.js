@@ -146,7 +146,7 @@ export const ROUTER_TOOL_SCHEMA = {
     "",
     'domain:"anim" (requires params.blueprint_path)',
     "  ops: create_state_machine, add_state, create_transition,",
-    "  set_state_anim, set_blend_space, add_variable, set_variable_default,",
+    "  set_state_animation, add_variable, set_variable_default,",
     "  compile, get_info, add_output_pose, connect_nodes, set_transition_rule,",
     "  set_state_notify, add_notify, get_state_machines, get_states, get_transitions,",
     "  set_slot, add_layer, get_layers, add_blend_profile, set_time_remaining_transition",

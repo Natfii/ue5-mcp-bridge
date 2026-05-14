@@ -82,11 +82,13 @@ Query and modify ACharacter actors in the current level.
 
 | Operation | Description | Required Params |
 |-----------|-------------|-----------------|
-| `list_characters` | Find all characters | None (optional: class_filter, limit, offset) |
+| `list_characters` | Find all characters | None (optional: class_filter, limit, offset). Returns `total_found` (and `total` as deprecated alias). |
 | `get_character_info` | Get character details | character_name |
 | `get_movement_params` | Query movement properties | character_name |
 | `set_movement_params` | Modify movement values | character_name + movement params |
 | `get_components` | List character components | character_name |
+| `get_character_config` | Read full Character CDO config (mesh, capsule, anim class, movement defaults) | **blueprint_path** (Character Blueprint asset path) |
+| `assign_anim_bp` | Assign an AnimBlueprint to the Character's mesh | **blueprint_path** + **anim_blueprint_path** |
 
 ### Example Usage
 

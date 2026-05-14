@@ -226,16 +226,28 @@ void AMyPlayerController::OnMove(const FInputActionValue& Value)
 
 The `enhanced_input` MCP tool supports these operations:
 
-| Operation | Description |
-|-----------|-------------|
-| `create_input_action` | Create new UInputAction asset |
-| `create_mapping_context` | Create new UInputMappingContext asset |
-| `add_mapping` | Add key→action binding to context |
-| `remove_mapping` | Remove binding from context |
-| `add_trigger` | Add trigger to existing mapping |
-| `add_modifier` | Add modifier to existing mapping |
-| `query_context` | List all mappings in a context |
-| `query_action` | Get InputAction details |
+| Operation | Description | Required Params |
+|-----------|-------------|-----------------|
+| `create_input_action` | Create new UInputAction asset | **action_name** (also accepts `name` alias), value_type |
+| `create_mapping_context` | Create new UInputMappingContext asset | **context_name** (also accepts `name` alias) |
+| `add_mapping` | Add key→action binding to context | context_path, action_path, key |
+| `remove_mapping` | Remove binding from context | context_path, mapping_index |
+| `add_trigger` | Add trigger to existing mapping | context_path, action_path, trigger_type |
+| `add_modifier` | Add modifier to existing mapping | context_path, action_path, modifier_type |
+| `query_context` | List all mappings in a context | **context_path** (or context_name as alias) |
+| `query_action` | Get InputAction details | **action_path** (or action_name as alias) |
+| `list_actions` | List InputAction assets in a path | optional `package_path` (default `/Game/`), `name_pattern`, `limit` (1-1000, default 50). Returns `total_found`. |
+| `list_contexts` | List InputMappingContext assets in a path | same params as list_actions |
+| `get_action_info` | Friendly-name variant of query_action | action_name |
+
+> `value_type` for `create_input_action` accepts: `Digital` (or `Boolean`/`Bool`), `Axis1D` (or `Float`), `Axis2D` (or `Vector2D`), `Axis3D` (or `Vector`).
+
+> **Param naming gotcha**: mutation ops (`add_mapping`, `add_trigger`, `add_modifier`)
+> require the full asset path (`action_path`, `context_path`). Read ops `query_action`
+> and `query_context` accept either the full path or the friendly name (`action_name`,
+> `context_name`) — passing the friendly name emits a warning and resolves it via the
+> asset registry. If you only have the name, prefer `get_action_info` (it's the
+> dedicated friendly-name op and skips the alias warning).
 
 ### Example Workflow
 

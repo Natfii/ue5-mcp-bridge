@@ -74,18 +74,21 @@ describe("resolveUnrealTool", () => {
     }
   });
 
-  it("routes character domain to 'character' for movement ops", () => {
-    expect(resolveUnrealTool("character", "set_movement_param")).toBe("character");
-    expect(resolveUnrealTool("character", "create_character_bp")).toBe("character");
+  it("routes character domain to 'character' for actor/config ops", () => {
+    expect(resolveUnrealTool("character", "set_movement_params")).toBe("character");
+    expect(resolveUnrealTool("character", "get_movement_params")).toBe("character");
+    expect(resolveUnrealTool("character", "list_characters")).toBe("character");
     expect(resolveUnrealTool("character", "get_character_config")).toBe("character");
+    expect(resolveUnrealTool("character", "assign_anim_bp")).toBe("character");
   });
 
   it("routes character domain to 'character_data' for data asset ops", () => {
-    expect(resolveUnrealTool("character", "create_data_asset")).toBe("character_data");
-    expect(resolveUnrealTool("character", "update_stats")).toBe("character_data");
-    expect(resolveUnrealTool("character", "get_data_asset")).toBe("character_data");
-    expect(resolveUnrealTool("character", "list_data_assets")).toBe("character_data");
-    expect(resolveUnrealTool("character", "assign_data_asset")).toBe("character_data");
+    expect(resolveUnrealTool("character", "create_character_data")).toBe("character_data");
+    expect(resolveUnrealTool("character", "query_character_data")).toBe("character_data");
+    expect(resolveUnrealTool("character", "get_character_data")).toBe("character_data");
+    expect(resolveUnrealTool("character", "update_character_data")).toBe("character_data");
+    expect(resolveUnrealTool("character", "apply_character_data")).toBe("character_data");
+    expect(resolveUnrealTool("character", "add_stats_row")).toBe("character_data");
   });
 
   it("returns null for unknown domain", () => {
@@ -145,6 +148,30 @@ describe("ROUTER_TOOL_SCHEMA", () => {
     expect(desc).toContain("material_path");
     expect(desc).toContain("action_name");
     expect(desc).toContain("character_name");
+  });
+
+  it("description warns off the wrong anim variable param names", () => {
+    const desc = ROUTER_TOOL_SCHEMA.description;
+    // Guards the v0.1.x friction-fix: anim variable ops use 'variable_name'/'variable_type'
+    // (NOT var_name/var_type — which is the blueprint domain's spelling). Schema text
+    // should steer LLMs to the canonical names so they don't hit the alias warning.
+    expect(desc).toMatch(/variable_name.*variable_type/);
+    expect(desc).toContain("var_name");
+  });
+
+  it("description disambiguates duplicate vs move destination params", () => {
+    const desc = ROUTER_TOOL_SCHEMA.description;
+    // duplicate uses 'destination_path' (full path); move uses 'destination_directory' (folder).
+    // Both should be present in the asset block so users don't confuse them.
+    expect(desc).toContain("destination_path");
+    expect(desc).toContain("destination_directory");
+  });
+
+  it("description tells users that state_machine accepts node_id too", () => {
+    const desc = ROUTER_TOOL_SCHEMA.description;
+    // Guards Fix 3: get_states/get_transitions/get_conduits resolve `state_machine`
+    // against either the bound graph name or the node_id surfaced by get_info.
+    expect(desc).toMatch(/state_machine.*node_id/);
   });
 });
 

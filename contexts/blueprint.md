@@ -158,6 +158,17 @@ Auto-compiles the Blueprint after changes.
 | `disconnect_pins` | Break pin connection | `blueprint_path`, `source_node_id`, `source_pin`, `target_node_id`, `target_pin` |
 | `set_pin_value` | Set default value for input pin | `blueprint_path`, `node_id`, `pin_name`, `pin_value` |
 
+> **Optional graph selector** for `connect_pins`/`disconnect_pins`/`delete_node`/`add_node`/`set_pin_value`:
+> pass `graph_name` + `is_function_graph: true` to target a specific function graph;
+> omit both to target the event graph (default).
+>
+> **`add_nodes` per-node spec**: each entry accepts `type` OR `node_type`, plus `pos_x`/`pos_y`,
+> plus either `params: {...}` OR `node_params: {...}` (or specific keys like `function`/`event`/`variable`
+> inline). Connection sub-objects accept `from_node`/`from_pin`/`to_node`/`to_pin` OR
+> `source_node_id`/`source_pin`/`target_node_id`/`target_pin` (matches sibling `connect_pins`).
+> `from_node`/`to_node` (and the `source_node_id`/`target_node_id` aliases) accept either a
+> numeric index into the `nodes[]` array or a literal node_id string.
+
 ### Query operations (→ `blueprint_query`)
 
 Read-only. Use `list` first to discover Blueprints, then `inspect` or `get_graph` for details.

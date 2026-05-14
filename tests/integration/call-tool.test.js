@@ -472,7 +472,7 @@ describe("CallTool — unreal_ue router", () => {
     ]);
     await simulateCallTool("unreal_ue", {
       domain: "character",
-      operation: "create_data_asset",
+      operation: "create_character_data",
       params: { asset_name: "Hero" },
     }, { asyncEnabled: false });
 
@@ -480,13 +480,13 @@ describe("CallTool — unreal_ue router", () => {
     expect(call).toBeDefined();
   });
 
-  it("routes character/set_movement_param to character tool", async () => {
+  it("routes character/set_movement_params to character tool", async () => {
     const spy = installFetchMock([
       { pattern: "/mcp/tool/character", body: { success: true, message: "Param set" } },
     ]);
     await simulateCallTool("unreal_ue", {
       domain: "character",
-      operation: "set_movement_param",
+      operation: "set_movement_params",
       params: { character_name: "Hero" },
     }, { asyncEnabled: false });
 
@@ -611,7 +611,7 @@ describe("CallTool — unreal_ue router", () => {
     // Data asset op → character_data
     await simulateCallTool("unreal_ue", {
       domain: "character",
-      operation: "create_data_asset",
+      operation: "create_character_data",
       params: { asset_name: "Hero" },
     }, { asyncEnabled: false });
     const dataCall = spy.mock.calls.find(c => c[0].includes("character_data"));
@@ -620,7 +620,7 @@ describe("CallTool — unreal_ue router", () => {
     // Movement op → character
     await simulateCallTool("unreal_ue", {
       domain: "character",
-      operation: "set_movement_param",
+      operation: "set_movement_params",
       params: { character_name: "Hero" },
     }, { asyncEnabled: false });
     const charCall = spy.mock.calls.find(c => c[0].includes("/mcp/tool/character") && !c[0].includes("character_data"));

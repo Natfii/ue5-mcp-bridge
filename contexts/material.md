@@ -134,10 +134,15 @@ Material instance creation and parameter management.
 | Operation | Description | Required Params |
 |-----------|-------------|-----------------|
 | `create_material_instance` | Create new MaterialInstanceConstant | asset_name, parent_material |
-| `set_material_parameters` | Set parameters on existing instance | material_instance_path, parameters |
+| `set_material_parameters` | Set parameters on existing instance | **material_path** (also accepts `material_instance_path` deprecated alias), parameters |
 | `set_skeletal_mesh_material` | Assign material to skeletal mesh slot | skeletal_mesh_path, material_path |
 | `set_actor_material` | Assign material to an actor's mesh component | actor_name, material_path |
-| `get_material_info` | Get material details and parameters | asset_path |
+| `get_material_info` | Get material details and parameters | **material_path** (also accepts `asset_path` deprecated alias) |
+
+> **Param naming**: `material_path` is the canonical key for any material asset path
+> across this domain. `set_material_parameters` historically used `material_instance_path`
+> and `get_material_info` used `asset_path` — both still work but emit a deprecation
+> warning. Converge on `material_path` for new code.
 
 ### Example Usage
 

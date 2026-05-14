@@ -258,6 +258,17 @@ The `asset` tool provides generic operations for modifying and saving Content Br
 | `save_asset` | Save asset to disk | asset_path |
 | `get_asset_info` | Get asset information | asset_path |
 | `list_assets` | List assets in directory | directory |
+| `duplicate` | Duplicate an asset | asset_path, **destination_path** (full target asset path) |
+| `rename` | Rename an asset in place | asset_path, new_name (name only, no path) |
+| `delete` | Delete an asset | asset_path |
+| `move` | Move an asset to another folder | asset_path, **destination_directory** (folder only; asset name preserved) |
+| `reimport` | Reimport from source file | asset_path |
+
+> **Param naming gotcha**: `duplicate` uses `destination_path` (full path), but
+> `move` uses `destination_directory` (folder only). The two ops differ on purpose
+> — `move` always preserves the source asset name. `move` accepts `destination_path`
+> as an alias with a warning, treating the value as a directory either way; if you
+> want to rename + move, run `rename` and `move` as separate calls.
 
 ### Example Usage
 

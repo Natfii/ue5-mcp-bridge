@@ -126,7 +126,9 @@ FAnimationBlueprintUtils::SetStateBlendSpace1D(
 
 ## MCP Animation Operations
 
-Available operations via `anim_blueprint_modify` tool:
+Available operations via `anim_blueprint_modify` tool (call through `unreal_ue` with `domain: "anim"`):
+
+### State machine structure
 
 | Operation | Description |
 |-----------|-------------|
@@ -140,6 +142,53 @@ Available operations via `anim_blueprint_modify` tool:
 | `set_entry_state` | Set which state is the entry point |
 | `get_state_machine_diagram` | Get ASCII visualization |
 | `validate_blueprint` | Check for errors and warnings |
+
+### Variable + compile (v0.1.0)
+
+| Operation | Required params |
+|-----------|-----------------|
+| `add_variable` | `blueprint_path`, `variable_name`, `variable_type` (optional `default_value`) |
+| `set_variable_default` | `blueprint_path`, `variable_name`, `default_value` |
+| `remove_variable` | `blueprint_path`, `variable_name` |
+| `compile` | `blueprint_path` |
+
+> **Param naming**: use `variable_name` and `variable_type` — not `var_name`/`var_type`.
+> Aliases are accepted with a warning so the LLM converges on the canonical names.
+
+### State machine enumeration (v0.1.0)
+
+| Operation | Description |
+|-----------|-------------|
+| `get_states` | List all states in a state machine |
+| `get_transitions` | List all transitions in a state machine |
+| `get_conduits` | List all conduits (logic-only states) in a state machine |
+
+> **`state_machine` identifier**: `get_info` returns each state machine with both
+> `name` (the bound graph's auto-name like `AnimationStateMachineGraph_1`) and
+> `node_id` (the user-friendly form like `StateMachine_LocomotionSM`). The
+> `get_states`/`get_transitions`/`get_conduits` ops accept either — pass whichever
+> reads better in your call site.
+
+### Required-param quick reference
+
+The condition-graph ops all need the same identifier quartet:
+`state_machine`, `from_state`, `to_state`, `node_id`. Affects:
+`delete_condition_node`, `inspect_node_pins`, `set_pin_default_value`
+(also accepts the alias op name `set_pin_value` for cross-domain consistency
+with `blueprint.set_pin_value`), `connect_condition_nodes`, `connect_to_result`.
+
+Position params on `create_state_machine`/`add_state`/`add_condition_node`/
+`add_comparison_chain` accept BOTH `position: {x, y}` (canonical anim form) AND
+`pos_x`/`pos_y` scalars (matches blueprint domain).
+
+`set_state_animation` requires `state_machine` + `state_name` + `animation_path`;
+optional `animation_type` (`sequence` | `blendspace` | `blendspace1d` | `montage`,
+default `sequence`); for blendspaces also accepts `parameter_bindings` (object
+mapping pin name → variable name).
+
+`find_animations` filter is `animation_filter` (canonical, was `asset_type` —
+deprecated to avoid colliding with the bridge-wide `asset_type`→`class_filter`
+alias used by `asset_search`).
 
 ## Best Practices
 

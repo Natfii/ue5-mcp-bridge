@@ -239,8 +239,91 @@ const CONTEXT_CONFIG = {
   },
 };
 
-// Cache for loaded context files
+// Cache for loaded context files (raw content)
 const contextCache = new Map();
+
+// Cache for parsed sections per file
+const parsedSectionCache = new Map();
+
+/**
+ * Parse a markdown file into level-2 sections (## headings).
+ * Level-3+ headings remain inside their parent section body.
+ * @param {string} content - Raw markdown content
+ * @returns {{ preamble: string, sections: Array<{heading: string, body: string}> }}
+ */
+function parseMarkdownSections(content) {
+  const sections = [];
+  let currentHeading = null;
+  let currentLines = [];
+  const preambleLines = [];
+
+  for (const line of content.split("\n")) {
+    const h2 = line.match(/^##\s+(.+)/);
+    if (h2) {
+      if (currentHeading !== null) {
+        sections.push({ heading: currentHeading, body: currentLines.join("\n").trim() });
+      }
+      currentHeading = h2[1].trim();
+      currentLines = [line];
+    } else if (currentHeading === null) {
+      preambleLines.push(line);
+    } else {
+      currentLines.push(line);
+    }
+  }
+
+  if (currentHeading !== null) {
+    sections.push({ heading: currentHeading, body: currentLines.join("\n").trim() });
+  }
+
+  return {
+    preamble: preambleLines.join("\n").trim(),
+    sections,
+  };
+}
+
+/**
+ * Get parsed sections for a file (with caching).
+ * @param {string} filename
+ * @returns {{ preamble: string, sections: Array<{heading: string, body: string}> } | null}
+ */
+function getCachedParsedSections(filename) {
+  if (parsedSectionCache.has(filename)) {
+    return parsedSectionCache.get(filename);
+  }
+
+  const content = loadContextFile(filename);
+  if (!content) return null;
+
+  const parsed = parseMarkdownSections(content);
+  parsedSectionCache.set(filename, parsed);
+  return parsed;
+}
+
+/**
+ * Score a section's relevance to a query and keyword list.
+ * @param {{ heading: string, body: string }} section
+ * @param {string[]} queryTerms - lowercase query words (len > 2)
+ * @param {string[]} keywords - lowercase config keywords
+ * @returns {number}
+ */
+function scoreSectionRelevance(section, queryTerms, keywords) {
+  const headingLower = section.heading.toLowerCase();
+  const bodyLower = section.body.toLowerCase();
+  let score = 0;
+
+  for (const kw of keywords) {
+    if (headingLower.includes(kw)) score += 3;
+    else if (bodyLower.includes(kw)) score += 1;
+  }
+
+  for (const term of queryTerms) {
+    if (headingLower.includes(term)) score += 2;
+    else if (bodyLower.includes(term)) score += 1;
+  }
+
+  return score;
+}
 
 /**
  * Load a context file from disk (with caching)
@@ -397,10 +480,123 @@ export function getCategoryInfo(category) {
 }
 
 /**
+ * List available section headings for a category.
+ * Returns [] if the file has no ## headings (single-section document).
+ * @param {string} category
+ * @returns {string[]}
+ */
+export function listSections(category) {
+  const config = CONTEXT_CONFIG[category];
+  if (!config) return [];
+
+  const headings = [];
+  for (const file of config.files) {
+    const parsed = getCachedParsedSections(file);
+    if (parsed) {
+      headings.push(...parsed.sections.map((s) => s.heading));
+    }
+  }
+  return headings;
+}
+
+/**
+ * Retrieve a specific section by heading (case-insensitive match).
+ * @param {string} category
+ * @param {string} headingText
+ * @returns {string | null} Section body (including its ## heading line), or null if not found
+ */
+export function getSectionByHeading(category, headingText) {
+  const config = CONTEXT_CONFIG[category];
+  if (!config) return null;
+
+  const lowerTarget = headingText.toLowerCase();
+
+  for (const file of config.files) {
+    const parsed = getCachedParsedSections(file);
+    if (!parsed) continue;
+
+    const match = parsed.sections.find((s) => s.heading.toLowerCase().includes(lowerTarget));
+    if (match) return match.body;
+  }
+
+  return null;
+}
+
+/**
+ * Return the top N most relevant sections for a query, across matching categories.
+ * Falls back to the full file content for categories whose files have no ## sections.
+ *
+ * @param {string} query - Natural-language query
+ * @param {{ category?: string, maxSections?: number }} options
+ * @returns {{ sections: Array<{category: string, heading: string, body: string}>, categories: string[], totalScanned: number } | null}
+ */
+export function getSectionsForQuery(query, { category, maxSections = 3 } = {}) {
+  const lowerQuery = query.toLowerCase();
+  const queryTerms = lowerQuery.split(/\s+/).filter((t) => t.length > 2);
+
+  const categoriesToSearch = category
+    ? (CONTEXT_CONFIG[category] ? [category] : [])
+    : getCategoriesFromQuery(query);
+
+  if (categoriesToSearch.length === 0) return null;
+
+  /** @type {Array<{category: string, heading: string, body: string, score: number}>} */
+  const candidates = [];
+
+  for (const cat of categoriesToSearch) {
+    const config = CONTEXT_CONFIG[cat];
+    const keywords = config.keywords.map((k) => k.toLowerCase());
+
+    for (const file of config.files) {
+      const parsed = getCachedParsedSections(file);
+      if (!parsed) continue;
+
+      if (parsed.sections.length === 0) {
+        // No ## headings — treat the whole file as one section
+        const content = loadContextFile(file);
+        if (content) {
+          candidates.push({ category: cat, heading: cat, body: content, score: 1 });
+        }
+        continue;
+      }
+
+      for (const section of parsed.sections) {
+        const score = scoreSectionRelevance(section, queryTerms, keywords);
+        if (score > 0) {
+          candidates.push({ category: cat, heading: section.heading, body: section.body, score });
+        }
+      }
+    }
+  }
+
+  if (candidates.length === 0) return null;
+
+  // Sort by score desc, deduplicate headings, take top N
+  candidates.sort((a, b) => b.score - a.score);
+  const seen = new Set();
+  const top = [];
+  for (const c of candidates) {
+    const key = `${c.category}::${c.heading}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      top.push(c);
+      if (top.length >= maxSections) break;
+    }
+  }
+
+  return {
+    sections: top.map(({ category: cat, heading, body }) => ({ category: cat, heading, body })),
+    categories: [...new Set(top.map((c) => c.category))],
+    totalScanned: candidates.length,
+  };
+}
+
+/**
  * Clear the context cache (useful for hot-reloading)
  */
 export function clearCache() {
   contextCache.clear();
+  parsedSectionCache.clear();
 }
 
 export default {
@@ -411,5 +607,8 @@ export default {
   getContextForQuery,
   listCategories,
   getCategoryInfo,
+  listSections,
+  getSectionByHeading,
+  getSectionsForQuery,
   clearCache,
 };

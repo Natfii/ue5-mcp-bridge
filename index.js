@@ -27,6 +27,9 @@ import {
   listCategories,
   getCategoryInfo,
   loadContextForCategory,
+  listSections,
+  getSectionByHeading,
+  getSectionsForQuery,
 } from "./context-loader.js";
 
 // Extracted library functions
@@ -143,22 +146,55 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
   // 3. Router tool (static schema for all mega-tools)
   mcpTools.push(ROUTER_TOOL_SCHEMA);
 
-  // 4. Context tool last
+  // 4. Context tool (section-aware)
   mcpTools.push({
     name: "unreal_get_ue_context",
-    description: `Get UE 5.7 API context. Categories: ${listCategories().join(", ")}`,
+    description: [
+      "Get UE 5.7 API documentation. By default returns only the most relevant SECTIONS for your query (saves tokens).",
+      `Categories: ${listCategories().join(", ")}.`,
+      'Modes: "sections" (default — targeted by query), "outline" (TOC of headings), "full" (entire file, use sparingly).',
+    ].join(" "),
     inputSchema: {
       type: "object",
       properties: {
-        category: {
-          type: "string",
-          description: `Specific category to load: ${listCategories().join(", ")}`,
-        },
         query: {
           type: "string",
-          description: "Search query to find relevant context (e.g., 'state machine transitions', 'async loading')",
+          description: "Natural-language query — returns up to max_sections most relevant sections across matching categories.",
+        },
+        category: {
+          type: "string",
+          description: `Restrict search to one category: ${listCategories().join(", ")}. With mode="full" returns the entire file.`,
+        },
+        section: {
+          type: "string",
+          description: 'Exact section heading to retrieve (e.g., "Core Classes"). Use after an outline call.',
+        },
+        mode: {
+          type: "string",
+          enum: ["sections", "outline", "full"],
+          description: 'sections=targeted (default), outline=list headings only, full=entire file.',
+        },
+        max_sections: {
+          type: "number",
+          description: "Max sections to return in sections mode (default 3, max 8).",
         },
       },
+    },
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+  });
+
+  // 5. Project context tool (on-demand, replaces always-on system prompt dump)
+  mcpTools.push({
+    name: "unreal_get_project_context",
+    description: "Get full project context: C++ class list, source structure, level actors, asset counts. Call when you need project-specific details.",
+    inputSchema: {
+      type: "object",
+      properties: {},
     },
     annotations: {
       readOnlyHint: true,
@@ -176,73 +212,168 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
 
-  // Handle UE context request
+  // Handle UE context request (section-aware, token-efficient)
   if (name === "unreal_get_ue_context") {
-    const { category, query } = args || {};
+    const { category, query, section, mode, max_sections } = args || {};
+    const maxSections = Math.min(Math.max(1, Number(max_sections) || 3), 8);
 
-    let result = null;
-    let matchedCategories = [];
-
-    if (category) {
-      const content = loadContextForCategory(category);
-      if (content) {
-        result = content;
-        matchedCategories = [category];
-      } else {
-        return {
-          content: [
-            {
-              type: "text",
-              text: `Unknown category: ${category}. Available categories: ${listCategories().join(", ")}`,
-            },
-          ],
-          isError: true,
-        };
-      }
-    }
-    else if (query) {
-      const queryResult = getContextForQuery(query);
-      if (queryResult) {
-        result = queryResult.content;
-        matchedCategories = queryResult.categories;
-      } else {
-        return {
-          content: [
-            {
-              type: "text",
-              text: `No context found for query: "${query}". Try categories: ${listCategories().join(", ")}`,
-            },
-          ],
-          isError: false,
-        };
-      }
-    }
-    else {
-      const categoryList = listCategories().map((cat) => {
+    // --- outline mode OR no arguments: return table of contents ---
+    if (mode === "outline" || (!category && !query && !section)) {
+      const lines = listCategories().map((cat) => {
+        const headings = listSections(cat);
         const info = getCategoryInfo(cat);
-        return `- **${cat}**: Keywords: ${info.keywords.slice(0, 5).join(", ")}...`;
+        const sectionList = headings.length > 0
+          ? headings.map((h) => `  - ${h}`).join("\n")
+          : `  (keywords: ${info.keywords.slice(0, 4).join(", ")})`;
+        return `**${cat}**\n${sectionList}`;
       });
 
       return {
-        content: [
-          {
-            type: "text",
-            text: `# Available UE 5.7 Context Categories\n\n${categoryList.join("\n")}\n\nUse \`category\` param for specific context or \`query\` to search by keywords.`,
-          },
-        ],
+        content: [{
+          type: "text",
+          text: `# UE 5.7 Context — Available Sections\n\nUse \`query\` for targeted loading or \`category\`+\`section\` for a specific section.\n\n${lines.join("\n\n")}`,
+        }],
       };
     }
 
-    log.info("UE context loaded", { categories: matchedCategories });
+    // --- category outline: just headings for one category ---
+    if (category && mode === "outline") {
+      const headings = listSections(category);
+      if (headings.length === 0) {
+        return {
+          content: [{ type: "text", text: `Category "${category}" has no sub-sections. Use mode="full" to load it entirely.` }],
+        };
+      }
+      return {
+        content: [{ type: "text", text: `# ${category} — Sections\n\n${headings.map((h) => `- ${h}`).join("\n")}` }],
+      };
+    }
 
-    return {
-      content: [
-        {
+    // --- category + section: retrieve specific section ---
+    if (category && section) {
+      const body = getSectionByHeading(category, section);
+      if (!body) {
+        const available = listSections(category);
+        return {
+          content: [{
+            type: "text",
+            text: `Section "${section}" not found in "${category}". Available: ${available.join(", ") || "(none — use mode=full)"}`,
+          }],
+          isError: true,
+        };
+      }
+      log.info("UE context section loaded", { category, section });
+      return {
+        content: [{ type: "text", text: `# UE 5.7 — ${category} › ${section}\n\n${body}` }],
+      };
+    }
+
+    // --- category + mode=full: entire file (explicit opt-in) ---
+    if (category && mode === "full") {
+      const content = loadContextForCategory(category);
+      if (!content) {
+        return {
+          content: [{ type: "text", text: `Unknown category: "${category}". Available: ${listCategories().join(", ")}` }],
+          isError: true,
+        };
+      }
+      log.info("UE context full category loaded", { category });
+      return {
+        content: [{ type: "text", text: `# UE 5.7 Context: ${category}\n\n${content}` }],
+      };
+    }
+
+    // --- query (with optional category restriction): targeted sections ---
+    if (query) {
+      const result = getSectionsForQuery(query, { category, maxSections });
+      if (!result) {
+        return {
+          content: [{
+            type: "text",
+            text: `No context found for query: "${query}". Try mode="outline" to see available categories and sections.`,
+          }],
+        };
+      }
+
+      const parts = result.sections.map(
+        (s) => `## [${s.category}] ${s.heading}\n\n${s.body}`
+      );
+      const header = `# UE 5.7 Context — ${result.sections.length} section(s) matching "${query}"` +
+        (result.sections.length < result.totalScanned
+          ? ` (showing ${result.sections.length}/${result.totalScanned} scored sections)`
+          : "");
+
+      log.info("UE context sections loaded", {
+        query,
+        categories: result.categories,
+        sections: result.sections.length,
+        totalScanned: result.totalScanned,
+      });
+
+      return {
+        content: [{ type: "text", text: `${header}\n\n${parts.join("\n\n---\n\n")}` }],
+      };
+    }
+
+    // --- category alone (no query, no mode): outline that category ---
+    if (category) {
+      const headings = listSections(category);
+      if (headings.length === 0) {
+        // No sections: just return full file (small file)
+        const content = loadContextForCategory(category);
+        if (!content) {
+          return {
+            content: [{ type: "text", text: `Unknown category: "${category}". Available: ${listCategories().join(", ")}` }],
+            isError: true,
+          };
+        }
+        return {
+          content: [{ type: "text", text: `# UE 5.7 Context: ${category}\n\n${content}` }],
+        };
+      }
+      return {
+        content: [{
           type: "text",
-          text: `# UE 5.7 Context: ${matchedCategories.join(", ")}\n\n${result}`,
-        },
-      ],
+          text: `# ${category} — Sections\n\n${headings.map((h) => `- ${h}`).join("\n")}\n\nUse \`section\` param to load a specific section, or add \`query\` to target relevant sections.`,
+        }],
+      };
+    }
+
+    // Should not reach here
+    return {
+      content: [{ type: "text", text: "Provide at least one of: query, category, section. Use mode=outline to explore available sections." }],
+      isError: true,
     };
+  }
+
+  // Handle project context request (on-demand, avoids bloating system prompt)
+  if (name === "unreal_get_project_context") {
+    const status = await checkUnrealConnection();
+    if (!status.connected) {
+      return {
+        content: [{ type: "text", text: "Unreal Editor not connected. Start the editor with the plugin enabled." }],
+        isError: true,
+      };
+    }
+
+    try {
+      const response = await fetch(`${CONFIG.unrealMcpUrl}/mcp/project_context`, {
+        signal: AbortSignal.timeout(CONFIG.requestTimeoutMs),
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      const data = await response.json();
+      log.info("Project context loaded", { summary: data.summary });
+      return {
+        content: [{ type: "text", text: data.context || "No project context available." }],
+      };
+    } catch (err) {
+      return {
+        content: [{ type: "text", text: `Failed to fetch project context: ${err.message}` }],
+        isError: true,
+      };
+    }
   }
 
   // Handle status check (lightweight — uses cached tools, no context probe)
@@ -268,7 +399,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         context_categories: contextCategories.length,
         tool_summary: categories,
         total_tools: unrealTools.length,
-        exposed_tools: simpleCount + 3, // simple tools + status + router + context
+        exposed_tools: simpleCount + 4, // simple tools + status + router + context + project_context
         message: "Unreal Editor connected. All tools operational.",
       };
 

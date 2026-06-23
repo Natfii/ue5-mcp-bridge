@@ -6,16 +6,68 @@ vi.mock("fs", () => ({
     // Return stub content keyed by filename
     const filename = filepath.replace(/\\/g, "/").split("/").pop();
     const stubs = {
-      "animation.md": "# Animation Context\nAnimation content here.",
-      "blueprint.md": "# Blueprint Context\nBlueprint content here.",
+      "animation.md": [
+        "# Animation Context",
+        "Preamble text.",
+        "",
+        "## State Machines",
+        "State machine details and transitions.",
+        "",
+        "## Blending",
+        "Blend space and animation blending content.",
+        "",
+        "## Montages",
+        "Montage and section content.",
+      ].join("\n"),
+      "blueprint.md": [
+        "# Blueprint Context",
+        "Blueprint preamble.",
+        "",
+        "## Core Classes",
+        "UBlueprint, UEdGraph, UK2Node hierarchy.",
+        "",
+        "## Graph Editing",
+        "Adding and connecting nodes.",
+        "",
+        "## Variables",
+        "Blueprint variable creation and types.",
+      ].join("\n"),
       "slate.md": "# Slate Context\nSlate content here.",
-      "actor.md": "# Actor Context\nActor content here.",
+      "actor.md": [
+        "# Actor Context",
+        "",
+        "## Spawning Actors",
+        "SpawnActor and deferred spawn.",
+        "",
+        "## Components",
+        "Adding and attaching components.",
+      ].join("\n"),
       "assets.md": "# Assets Context\nAssets content here.",
       "replication.md": "# Replication Context\nReplication content here.",
       "enhanced_input.md": "# Enhanced Input Context\nEnhanced input content here.",
-      "character.md": "# Character Context\nCharacter content here.",
+      "character.md": [
+        "# Character Context",
+        "",
+        "## Movement",
+        "Walk speed, jump velocity, and air control.",
+        "",
+        "## Capsule",
+        "Capsule component sizing.",
+      ].join("\n"),
       "material.md": "# Material Context\nMaterial content here.",
       "parallel_workflows.md": "# Parallel Tool Execution & Subagent Workflow Patterns\n\n## Level Setup\nLevel setup content.\n\n## Anti-Patterns\nAnti-patterns content.",
+      "ue-core-api.md": [
+        "# UE Core API",
+        "",
+        "## UPROPERTY Specifiers",
+        "EditAnywhere, BlueprintReadWrite, and other specifiers.",
+        "",
+        "## UCLASS Specifiers",
+        "Blueprintable, Abstract, and class specifiers.",
+        "",
+        "## UFUNCTION Specifiers",
+        "BlueprintCallable, BlueprintPure, and function specifiers.",
+      ].join("\n"),
     };
     if (stubs[filename]) return stubs[filename];
     throw new Error(`ENOENT: no such file or directory, open '${filepath}'`);
@@ -25,7 +77,7 @@ vi.mock("fs", () => ({
     const valid = [
       "animation.md", "blueprint.md", "slate.md", "actor.md",
       "assets.md", "replication.md", "enhanced_input.md", "character.md",
-      "material.md", "parallel_workflows.md",
+      "material.md", "parallel_workflows.md", "ue-core-api.md",
     ];
     return valid.includes(filename);
   }),
@@ -40,6 +92,9 @@ import {
   getContextForQuery,
   listCategories,
   getCategoryInfo,
+  listSections,
+  getSectionByHeading,
+  getSectionsForQuery,
   clearCache,
 } from "../../context-loader.js";
 
@@ -261,5 +316,117 @@ describe("clearCache", () => {
     ).length;
 
     expect(callsAfter).toBe(callsBefore + 1);
+  });
+});
+
+// ─── listSections ────────────────────────────────────────────────────
+
+describe("listSections", () => {
+  it("returns section headings for a category with ## headings", () => {
+    const headings = listSections("animation");
+    expect(headings).toContain("State Machines");
+    expect(headings).toContain("Blending");
+    expect(headings).toContain("Montages");
+  });
+
+  it("returns headings for blueprint category", () => {
+    const headings = listSections("blueprint");
+    expect(headings).toContain("Core Classes");
+    expect(headings).toContain("Graph Editing");
+    expect(headings).toContain("Variables");
+  });
+
+  it("returns empty array for categories without ## headings", () => {
+    const headings = listSections("slate"); // stub has no ## headings
+    expect(Array.isArray(headings)).toBe(true);
+    expect(headings).toHaveLength(0);
+  });
+
+  it("returns empty array for unknown category", () => {
+    expect(listSections("nonexistent")).toEqual([]);
+  });
+
+  it("returns headings for parallel_workflows", () => {
+    const headings = listSections("parallel_workflows");
+    expect(headings).toContain("Level Setup");
+    expect(headings).toContain("Anti-Patterns");
+  });
+});
+
+// ─── getSectionByHeading ─────────────────────────────────────────────
+
+describe("getSectionByHeading", () => {
+  it("returns section body for exact heading match", () => {
+    const body = getSectionByHeading("animation", "State Machines");
+    expect(body).not.toBeNull();
+    expect(body).toContain("State machine details");
+  });
+
+  it("returns section body for partial heading match (case-insensitive)", () => {
+    const body = getSectionByHeading("blueprint", "core");
+    expect(body).not.toBeNull();
+    expect(body).toContain("UBlueprint");
+  });
+
+  it("returns null for unknown heading", () => {
+    expect(getSectionByHeading("animation", "zzz_nonexistent_zzz")).toBeNull();
+  });
+
+  it("returns null for unknown category", () => {
+    expect(getSectionByHeading("nonexistent", "anything")).toBeNull();
+  });
+});
+
+// ─── getSectionsForQuery ─────────────────────────────────────────────
+
+describe("getSectionsForQuery", () => {
+  it("returns sections matching a query keyword", () => {
+    const result = getSectionsForQuery("animation state machine transitions");
+    expect(result).not.toBeNull();
+    expect(result.sections.length).toBeGreaterThan(0);
+    expect(result.categories).toContain("animation");
+  });
+
+  it("respects maxSections limit", () => {
+    const result = getSectionsForQuery("animation blueprint actor", { maxSections: 2 });
+    expect(result).not.toBeNull();
+    expect(result.sections.length).toBeLessThanOrEqual(2);
+  });
+
+  it("restricts to category when category option is given", () => {
+    const result = getSectionsForQuery("class", { category: "blueprint" });
+    expect(result).not.toBeNull();
+    for (const s of result.sections) {
+      expect(s.category).toBe("blueprint");
+    }
+  });
+
+  it("returns null when nothing matches", () => {
+    expect(getSectionsForQuery("zzz_nothing_zzz_unique")).toBeNull();
+  });
+
+  it("returns totalScanned count", () => {
+    const result = getSectionsForQuery("animation");
+    expect(result).not.toBeNull();
+    expect(typeof result.totalScanned).toBe("number");
+    expect(result.totalScanned).toBeGreaterThan(0);
+  });
+
+  it("sections have category, heading, body fields", () => {
+    const result = getSectionsForQuery("blueprint graph");
+    expect(result).not.toBeNull();
+    for (const s of result.sections) {
+      expect(typeof s.category).toBe("string");
+      expect(typeof s.heading).toBe("string");
+      expect(typeof s.body).toBe("string");
+    }
+  });
+
+  it("targeted sections are smaller than full category content", () => {
+    const full = loadContextForCategory("animation");
+    const result = getSectionsForQuery("state machine", { category: "animation", maxSections: 1 });
+    expect(result).not.toBeNull();
+    const sectionContent = result.sections.map((s) => s.body).join("\n");
+    expect(sectionContent.length).toBeLessThan(full.length);
   });
 });

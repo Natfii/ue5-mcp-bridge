@@ -515,8 +515,12 @@ export function getSectionByHeading(category, headingText) {
     const parsed = getCachedParsedSections(file);
     if (!parsed) continue;
 
-    const match = parsed.sections.find((s) => s.heading.toLowerCase().includes(lowerTarget));
-    if (match) return match.body;
+    // Exact match first, substring fallback
+    const exactMatch = parsed.sections.find((s) => s.heading.toLowerCase() === lowerTarget);
+    if (exactMatch) return exactMatch.body;
+
+    const partialMatch = parsed.sections.find((s) => s.heading.toLowerCase().includes(lowerTarget));
+    if (partialMatch) return partialMatch.body;
   }
 
   return null;

@@ -362,7 +362,14 @@ describe("getSectionByHeading", () => {
     expect(body).toContain("State machine details");
   });
 
-  it("returns section body for partial heading match (case-insensitive)", () => {
+  it("exact match wins over substring when both would match", () => {
+    // "Blending" is exact; "State Machines" contains "machine" not "blend" — test exact priority
+    const body = getSectionByHeading("animation", "Blending");
+    expect(body).toContain("Blend space");
+    expect(body).not.toContain("State machine");
+  });
+
+  it("returns section body for partial heading match (case-insensitive) when no exact", () => {
     const body = getSectionByHeading("blueprint", "core");
     expect(body).not.toBeNull();
     expect(body).toContain("UBlueprint");

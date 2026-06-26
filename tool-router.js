@@ -25,7 +25,17 @@ export const SIMPLE_TOOL_NAMES = new Set([
   "blueprint_query",
 ]);
 
-// Hidden tools: callable but never listed
+// Hidden tools: callable but never listed.
+//
+// task_* are async-queue plumbing the bridge drives internally (not meant for the model).
+// The four script tools are a deliberate power-user FALLBACK — kept hidden in releases so the model
+// reaches for the structured editor tools (the unreal_ue router + simple tools) instead of arbitrary
+// scripts, and to keep the advertised tool list small. They stay callable by exact name; every
+// execution is still gated C++-side by a deny-by-default permission dialog (ScriptPermissionDialog)
+// plus a console denylist. To surface one to the model, move it to SIMPLE_TOOL_NAMES (or add a
+// `scripting` domain to the router).
+// SECURITY: run_console_command can launch Python (`py ...`) -> arbitrary code. Only un-hide it on
+// trusted setups, and keep "Auto-approve script execution" OFF (Project Settings -> Unreal Claude).
 export const HIDDEN_TOOL_NAMES = new Set([
   "task_submit",
   "task_status",

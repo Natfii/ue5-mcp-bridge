@@ -16,6 +16,9 @@ vi.mock("fs", () => ({
         "## Blending",
         "Blend space and animation blending content.",
         "",
+        "## Blend",
+        "Single blend node usage details.",
+        "",
         "## Montages",
         "Montage and section content.",
       ].join("\n"),
@@ -362,11 +365,13 @@ describe("getSectionByHeading", () => {
     expect(body).toContain("State machine details");
   });
 
-  it("exact match wins over substring when both would match", () => {
-    // "Blending" is exact; "State Machines" contains "machine" not "blend" — test exact priority
-    const body = getSectionByHeading("animation", "Blending");
-    expect(body).toContain("Blend space");
-    expect(body).not.toContain("State machine");
+  it("prefers an exact heading over an earlier substring-superset match", () => {
+    // Stub order is "Blending" then "Blend": substring-first would match "Blending"
+    // (it contains "blend") and return the WRONG body. Exact-first must return "Blend".
+    // This assertion fails under the old substring-first implementation.
+    const body = getSectionByHeading("animation", "Blend");
+    expect(body).toContain("Single blend node");
+    expect(body).not.toContain("Blend space");
   });
 
   it("returns section body for partial heading match (case-insensitive) when no exact", () => {

@@ -131,3 +131,43 @@ export function resolveUeContextRequest(args, {
     isError: true,
   };
 }
+
+/**
+ * Handler for unreal_get_project_context. Probes editor connectivity, then fetches the
+ * editor's /mcp/project_context endpoint. Dependencies are injected so the three branches
+ * (disconnected, HTTP error, success) can be unit-tested without a live editor.
+ *
+ * @param {object} deps
+ * @param {() => Promise<{connected: boolean}>} deps.checkConnection - editor reachability probe
+ * @param {typeof fetch} deps.fetchImpl - fetch implementation (injected for testability)
+ * @param {string} deps.url - base Unreal MCP URL (no trailing slash)
+ * @param {number} deps.timeoutMs - per-request timeout in milliseconds
+ * @returns {Promise<object>} MCP response { content: [{type, text}], isError? }
+ */
+export async function resolveProjectContextRequest({ checkConnection, fetchImpl, url, timeoutMs }) {
+  const status = await checkConnection();
+  if (!status.connected) {
+    return {
+      content: [{ type: "text", text: "Unreal Editor not connected. Start the editor with the plugin enabled." }],
+      isError: true,
+    };
+  }
+
+  try {
+    const response = await fetchImpl(`${url}/mcp/project_context`, {
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+    const data = await response.json();
+    return {
+      content: [{ type: "text", text: data.context || "No project context available." }],
+    };
+  } catch (err) {
+    return {
+      content: [{ type: "text", text: `Failed to fetch project context: ${err.message}` }],
+      isError: true,
+    };
+  }
+}

@@ -33,7 +33,7 @@ import {
 } from "./context-loader.js";
 
 // Pure routing logic for unreal_get_ue_context (extracted for testability)
-import { resolveUeContextRequest } from "./context-handler.js";
+import { resolveUeContextRequest, resolveProjectContextRequest } from "./context-handler.js";
 
 // Extracted library functions
 import {
@@ -231,32 +231,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
   // Handle project context request (on-demand, avoids bloating system prompt)
   if (name === "unreal_get_project_context") {
-    const status = await checkUnrealConnection();
-    if (!status.connected) {
-      return {
-        content: [{ type: "text", text: "Unreal Editor not connected. Start the editor with the plugin enabled." }],
-        isError: true,
-      };
-    }
-
-    try {
-      const response = await fetch(`${CONFIG.unrealMcpUrl}/mcp/project_context`, {
-        signal: AbortSignal.timeout(CONFIG.requestTimeoutMs),
-      });
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      const data = await response.json();
-      log.info("Project context loaded", { summary: data.summary });
-      return {
-        content: [{ type: "text", text: data.context || "No project context available." }],
-      };
-    } catch (err) {
-      return {
-        content: [{ type: "text", text: `Failed to fetch project context: ${err.message}` }],
-        isError: true,
-      };
-    }
+    const response = await resolveProjectContextRequest({
+      checkConnection: checkUnrealConnection,
+      fetchImpl: fetch,
+      url: CONFIG.unrealMcpUrl,
+      timeoutMs: CONFIG.requestTimeoutMs,
+    });
+    log.info("Project context resolved", { isError: !!response.isError });
+    return response;
   }
 
   // Handle status check (lightweight — uses cached tools, no context probe)

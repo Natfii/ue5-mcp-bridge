@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { resolveUeContextRequest } from "../../context-handler.js";
+import { describe, it, expect } from "vitest";
+import { resolveUeContextRequest, resolveProjectContextRequest } from "../../context-handler.js";
 
 // ─── Minimal loader stubs ────────────────────────────────────────────
 
@@ -248,43 +248,49 @@ describe("getSectionByHeading matching priority", () => {
   });
 });
 
-// ─── unreal_get_project_context — mocked fetch ──────────────────────
+// ─── unreal_get_project_context — resolveProjectContextRequest ──────
 
-describe("project context fetch (mocked)", () => {
-  beforeEach(() => {
-    vi.unstubAllGlobals();
+describe("resolveProjectContextRequest", () => {
+  const connected = () => Promise.resolve({ connected: true });
+  const disconnected = () => Promise.resolve({ connected: false });
+  const baseDeps = { url: "http://localhost:3000", timeoutMs: 5000 };
+
+  it("returns isError guidance when the editor is not connected (and never fetches)", async () => {
+    const fetchImpl = () => { throw new Error("fetch must not be called when disconnected"); };
+    const res = await resolveProjectContextRequest({ ...baseDeps, checkConnection: disconnected, fetchImpl });
+    expect(res.isError).toBe(true);
+    expect(res.content[0].text).toContain("not connected");
   });
 
-  it("returns context text on success", async () => {
-    const mockContext = "=== PROJECT CONTEXT ===\nEchoOfAshes | 42 files";
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+  it("returns the project context text on success", async () => {
+    const fetchImpl = async () => ({
       ok: true,
-      json: async () => ({ context: mockContext, summary: "EchoOfAshes | ...", success: true }),
-    }));
-
-    const response = await fetch("http://localhost:3000/mcp/project_context", { signal: AbortSignal.timeout(5000) });
-    const data = await response.json();
-
-    expect(data.success).toBe(true);
-    expect(data.context).toContain("EchoOfAshes");
-    expect(data.summary).toBeDefined();
+      json: async () => ({ context: "=== PROJECT CONTEXT ===\nEchoOfAshes | 42 files", summary: "EchoOfAshes | ...", success: true }),
+    });
+    const res = await resolveProjectContextRequest({ ...baseDeps, checkConnection: connected, fetchImpl });
+    expect(res.isError).toBeFalsy();
+    expect(res.content[0].text).toContain("EchoOfAshes");
   });
 
-  it("handles HTTP error gracefully", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
-      ok: false,
-      status: 503,
-      statusText: "Service Unavailable",
-    }));
-
-    const response = await fetch("http://localhost:3000/mcp/project_context");
-    expect(response.ok).toBe(false);
-    expect(response.status).toBe(503);
+  it("falls back when the editor returns an empty context", async () => {
+    const fetchImpl = async () => ({ ok: true, json: async () => ({ context: "", success: true }) });
+    const res = await resolveProjectContextRequest({ ...baseDeps, checkConnection: connected, fetchImpl });
+    expect(res.isError).toBeFalsy();
+    expect(res.content[0].text).toBe("No project context available.");
   });
 
-  it("handles network failure gracefully", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("ECONNREFUSED")));
+  it("returns isError with the HTTP status on a non-ok response", async () => {
+    const fetchImpl = async () => ({ ok: false, status: 503, statusText: "Service Unavailable" });
+    const res = await resolveProjectContextRequest({ ...baseDeps, checkConnection: connected, fetchImpl });
+    expect(res.isError).toBe(true);
+    expect(res.content[0].text).toContain("Failed to fetch project context: HTTP 503");
+    expect(res.content[0].text).toContain("Service Unavailable");
+  });
 
-    await expect(fetch("http://localhost:3000/mcp/project_context")).rejects.toThrow("ECONNREFUSED");
+  it("returns isError on a network failure", async () => {
+    const fetchImpl = async () => { throw new Error("ECONNREFUSED"); };
+    const res = await resolveProjectContextRequest({ ...baseDeps, checkConnection: connected, fetchImpl });
+    expect(res.isError).toBe(true);
+    expect(res.content[0].text).toContain("Failed to fetch project context: ECONNREFUSED");
   });
 });
